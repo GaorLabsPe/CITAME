@@ -1,12 +1,13 @@
 
 import React, { useState } from 'react';
-import { Key, ArrowRight, UserCircle2, BarChart3, Database, ShieldCheck, LayoutGrid } from 'lucide-react';
+import { Key, ArrowRight, UserCircle2, BarChart3, ShieldCheck, LayoutGrid, CalendarRange } from 'lucide-react';
 
 interface Props {
   onLogin: () => void;
+  onPublicBooking: () => void;
 }
 
-const Login: React.FC<Props> = ({ onLogin }) => {
+const Login: React.FC<Props> = ({ onLogin, onPublicBooking }) => {
   const [accessKey, setAccessKey] = useState('');
 
   const handleLogin = (e: React.FormEvent) => {
@@ -18,12 +19,11 @@ const Login: React.FC<Props> = ({ onLogin }) => {
 
   return (
     <div className="min-h-screen bg-[#f0f4f8] flex flex-col items-center justify-center p-4 selection:bg-[#017E84]/20 overflow-hidden font-ubuntu">
-      {/* Container Principal con sombra suave y esquinas redondeadas según la imagen */}
+      {/* Container Principal */}
       <div className="w-full max-w-[1000px] bg-white rounded-[40px] shadow-[0_35px_60px_-15px_rgba(0,0,0,0.15)] flex flex-col md:flex-row overflow-hidden animate-stagger-1 border border-white/20">
         
-        {/* Lado Izquierdo: Branding y Beneficios (Gradiente profundo) */}
+        {/* Lado Izquierdo: Branding */}
         <div className="w-full md:w-[48%] bg-gradient-to-br from-[#015e63] via-[#1e3050] to-[#0f172a] p-12 text-white flex flex-col relative overflow-hidden">
-          {/* Círculos de fondo decorativos sutiles para profundidad */}
           <div className="absolute top-[-10%] right-[-10%] w-64 h-64 bg-[#017E84]/20 rounded-full blur-[80px]" />
           <div className="absolute bottom-[-10%] left-[-10%] w-64 h-64 bg-[#714B67]/10 rounded-full blur-[80px]" />
 
@@ -65,13 +65,13 @@ const Login: React.FC<Props> = ({ onLogin }) => {
           </div>
         </div>
 
-        {/* Lado Derecho: Formulario de Acceso Limpio */}
+        {/* Lado Derecho: Formulario y Acceso Paciente */}
         <div className="flex-1 bg-white p-12 md:p-20 flex flex-col justify-center animate-stagger-3">
           <div className="max-w-sm mx-auto w-full">
             <h2 className="text-4xl font-bold text-[#1e293b] mb-3 tracking-tight">Bienvenido</h2>
             <p className="text-slate-400 font-medium mb-12 text-sm">Accede a tu panel de control personalizado.</p>
 
-            <form onSubmit={handleLogin} className="space-y-8">
+            <form onSubmit={handleLogin} className="space-y-6">
               <div className="space-y-3">
                 <label className="text-xs font-black uppercase text-slate-400 tracking-widest ml-1">Clave de Acceso</label>
                 <div className="relative group">
@@ -88,24 +88,37 @@ const Login: React.FC<Props> = ({ onLogin }) => {
 
               <button 
                 type="submit"
-                className="w-full bg-[#017E84] hover:bg-[#016a6f] text-white py-5 rounded-[18px] font-bold text-lg shadow-xl shadow-[#017E8422] transition-all flex items-center justify-center gap-3 hover:translate-y-[-2px] active:scale-[0.98] group"
+                className="w-full bg-[#1e293b] hover:bg-black text-white py-5 rounded-[18px] font-bold text-lg shadow-xl shadow-slate-200 transition-all flex items-center justify-center gap-3 active:scale-[0.98] group"
               >
                 Ingresar al Dashboard <ArrowRight className="group-hover:translate-x-1 transition-transform" />
               </button>
             </form>
 
-            <div className="mt-16 pt-8 border-t border-slate-50 flex items-center justify-center gap-2">
+            <div className="relative my-10 flex items-center">
+               <div className="flex-grow border-t border-slate-100"></div>
+               <span className="flex-shrink mx-4 text-[10px] font-black uppercase text-slate-300 tracking-widest">Ó</span>
+               <div className="flex-grow border-t border-slate-100"></div>
+            </div>
+
+            <button 
+              onClick={onPublicBooking}
+              className="w-full bg-white border-2 border-[#017E84] text-[#017E84] py-5 rounded-[18px] font-bold text-lg hover:bg-[#017E84]/5 transition-all flex items-center justify-center gap-3 group"
+            >
+              <CalendarRange size={22} className="group-hover:rotate-12 transition-transform" />
+              Reserva tu Cita Online
+            </button>
+
+            <div className="mt-12 pt-8 border-t border-slate-50 flex items-center justify-center gap-2">
                <UserCircle2 size={18} className="text-slate-300" />
-               <button className="text-xs font-bold text-slate-400 hover:text-[#714B67] transition-colors">Soy Administrador</button>
+               <button className="text-xs font-bold text-slate-400 hover:text-[#714B67] transition-colors">Ayuda Administrativa</button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Footer corporativo sutil */}
       <footer className="mt-10 text-center space-y-1 opacity-40">
         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">
-          © 2025 Citame Analytics. Secure Connection via Enterprise Sync.
+          © 2025 Citame Analytics. Secure Connection.
         </p>
         <p className="text-[10px] text-slate-400 font-medium">
           Desarrollado por <a href="https://gaorsystem.vercel.app/" target="_blank" rel="noopener noreferrer" className="font-bold text-[#017E84] hover:underline">GaorSystem Perú</a>

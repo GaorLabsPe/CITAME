@@ -34,6 +34,7 @@ export interface Appointment {
   motivo: string;
   odoo_partner_id?: number;
   odoo_sale_order_id?: number;
+  company_id: string; // ID de la compañía que posee la cita
   createdAt: string;
   updatedAt: string;
 }
@@ -53,14 +54,20 @@ export interface OdooConfig {
   webhookUrl: string;
 }
 
-export interface SupabaseConfig {
-  url: string;
-  anonKey: string;
+export interface CompanyProfile {
+  id: string; // El slug de la URL, ej: 'feetcare'
+  name: string;
+  tagline: string;
+  primaryColor: string;
+  secondaryColor: string;
+  odoo: OdooConfig;
+  isActive: boolean;
+  logo?: string;
 }
 
 export interface AppConfig {
-  odoo: OdooConfig;
-  supabase: SupabaseConfig;
+  companies: CompanyProfile[];
+  activeCompanyId: string; // Para el panel de admin por defecto
 }
 
 export interface OdooProduct {

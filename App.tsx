@@ -10,9 +10,10 @@ import {
   Activity,
   Bell,
   ShieldCheck,
-  LogOut
+  LogOut,
+  Building2
 } from 'lucide-react';
-import { Appointment, Sede, Doctor, AppConfig } from './types';
+import { Appointment, Sede, Doctor, AppConfig, CompanyProfile } from './types';
 import { OdooService } from './services/odooService';
 import { DEFAULT_SEDES } from './constants';
 import Dashboard from './components/Dashboard';
@@ -22,6 +23,7 @@ import AppointmentForm from './components/AppointmentForm';
 import ConfigPanel from './components/ConfigPanel';
 import AdminPanel from './components/AdminPanel';
 import Login from './components/Login';
+import PublicBooking from './components/PublicBooking';
 
 declare global {
   interface Window {
@@ -39,24 +41,39 @@ if (typeof window !== 'undefined' && !window.storage) {
   };
 }
 
-type View = 'login' | 'dashboard' | 'calendar' | 'list' | 'new-appointment' | 'config' | 'admin';
+type View = 'login' | 'dashboard' | 'calendar' | 'list' | 'new-appointment' | 'config' | 'admin' | 'public-booking';
 
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState<View>('login');
-  const [selectedDate, setSelectedDate] = useState<string | undefined>(undefined);
+  const [config, setConfig] = useState<AppConfig>({ companies: [], activeCompanyId: '' });
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [sedes, setSedes] = useState<Sede[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [config, setConfig] = useState<AppConfig | null>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [publicCompany, setPublicCompany] = useState<CompanyProfile | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const storedConfig = await window.storage.get('app_config');
-        if (storedConfig) setConfig(JSON.parse(storedConfig));
+        // 1. Cargar Configuración SaaS
+        const storedConfig = await window.storage.get('app_config_saas');
+        const parsedConfig: AppConfig = storedConfig ? JSON.parse(storedConfig) : { companies: [], activeCompanyId: '' };
+        setConfig(parsedConfig);
 
+        // 2. Detectar si estamos en una URL de reserva pública (?c=slug)
+        const params = new URLSearchParams(window.location.search);
+        const companySlug = params.get('c');
+        
+        if (companySlug) {
+          const found = parsedConfig.companies.find(c => c.id === companySlug && c.isActive);
+          if (found) {
+            setPublicCompany(found);
+            setActiveView('public-booking');
+          }
+        }
+
+        // 3. Cargar datos maestros
         const storedSedes = await window.storage.get('sedes');
         setSedes(storedSedes ? JSON.parse(storedSedes) : DEFAULT_SEDES);
 
@@ -64,10 +81,10 @@ const App: React.FC = () => {
         setDoctors(storedDoctors ? JSON.parse(storedDoctors) : []);
 
         const storedAppointments = await window.storage.get('appointments');
-        if (storedAppointments) setAppointments(JSON.parse(storedAppointments));
+        setAppointments(storedAppointments ? JSON.parse(storedAppointments) : []);
         
       } catch (e) {
-        console.error("Error loading data", e);
+        console.error("Error loading SaaS data", e);
       } finally {
         setIsLoading(false);
       }
@@ -83,18 +100,20 @@ const App: React.FC = () => {
     const updated = [newAppointment, ...appointments];
     setAppointments(updated);
     await persist('appointments', updated);
-    setActiveView('list');
+    
+    if (activeView !== 'public-booking') setActiveView('list');
 
-    if (config?.odoo.url) {
+    // Sincronización con Odoo de la compañía específica
+    const currentCompany = publicCompany || config.companies.find(c => c.id === config.activeCompanyId);
+    if (currentCompany?.odoo.url) {
       try {
-        const odoo = new OdooService(config.odoo);
+        const odoo = new OdooService(currentCompany.odoo);
         const authed = await odoo.init();
         if (authed) {
           const partnerId = await odoo.findOrCreatePartner(newAppointment.patient);
           const products = await odoo.getMedicalProducts();
           const targetProduct = products[0]; 
           if (targetProduct) {
-            // Fix: Changed createSaleOrderId to createSaleOrder to match OdooService definition
             const saleOrderId = await odoo.createSaleOrder(newAppointment, partnerId, targetProduct.id);
             setAppointments(prev => {
               const res = prev.map(app => app.id === newAppointment.id ? { ...app, odoo_partner_id: partnerId, odoo_sale_order_id: saleOrderId } : app);
@@ -103,114 +122,105 @@ const App: React.FC = () => {
             });
           }
         }
-      } catch (e) { console.error("Sync failed", e); }
+      } catch (e) { console.error("Sync failed for company " + currentCompany.name, e); }
     }
   };
 
-  const updateAppointmentStatus = (id: string, status: Appointment['estado']) => {
-    const updated = appointments.map(app => app.id === id ? { ...app, estado: status, updatedAt: new Date().toISOString() } : app);
-    setAppointments(updated);
-    persist('appointments', updated);
-  };
-
-  const handleUpdateConfig = async (newConfig: AppConfig) => {
+  const handleUpdateSaaSConfig = async (newConfig: AppConfig) => {
     setConfig(newConfig);
-    await persist('app_config', newConfig);
+    await persist('app_config_saas', newConfig);
   };
 
-  const NavItem = ({ icon: Icon, label, view }: { icon: any, label: string, view: View }) => (
-    <button
-      onClick={() => { setActiveView(view); setIsSidebarOpen(false); }}
-      className={`flex items-center gap-3 w-full px-4 py-3 rounded-2xl transition-all duration-300 ${
-        activeView === view 
-        ? 'bg-[#017E84] text-white shadow-lg shadow-[#017E8444] scale-105' 
-        : 'text-slate-400 hover:bg-slate-700/30 hover:text-white'
-      }`}
-    >
-      <Icon size={20} />
-      <span className="font-medium">{label}</span>
-    </button>
-  );
+  if (isLoading) return <div className="flex items-center justify-center h-screen bg-[#f4f7f6]"><div className="animate-spin rounded-full h-16 w-16 border-b-4 border-[#017E84]" /></div>;
+
+  if (activeView === 'public-booking' && publicCompany) {
+    return <PublicBooking 
+              company={publicCompany} 
+              sedes={sedes} 
+              doctors={doctors} 
+              appointments={appointments} 
+              onSave={handleCreateAppointment} 
+            />;
+  }
 
   if (activeView === 'login') {
-    return <Login onLogin={() => setActiveView('dashboard')} />;
+    return <Login onLogin={() => setActiveView('dashboard')} onPublicBooking={() => {
+      if (config.companies.length > 0) {
+        setPublicCompany(config.companies[0]);
+        setActiveView('public-booking');
+      } else {
+        alert("Primero configura una compañía en el panel administrativo.");
+      }
+    }} />;
   }
+
+  const activeCompany = config.companies.find(c => c.id === config.activeCompanyId) || { name: 'CITAME Admin', primaryColor: '#017E84' };
 
   return (
     <div className="flex min-h-screen bg-[#f4f7f6]">
-      {isSidebarOpen && <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
-
       <aside className={`fixed lg:static inset-y-0 left-0 w-72 bg-[#1e3050] text-white z-50 transform transition-transform duration-500 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <div className="p-6 flex flex-col h-full">
-          <div className="flex items-center gap-4 mb-12 animate-stagger-1">
-            <div className="bg-gradient-to-br from-[#017E84] to-[#714B67] p-2.5 rounded-2xl shadow-lg">
+          <div className="flex items-center gap-4 mb-12">
+            <div className="p-2.5 rounded-2xl shadow-lg" style={{ backgroundColor: activeCompany.primaryColor }}>
               <Activity size={28} className="text-white" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight">CITAME</h1>
+            <div>
+               <h1 className="text-xl font-bold tracking-tight leading-none uppercase">{activeCompany.name}</h1>
+               <p className="text-[9px] text-white/40 font-bold tracking-widest mt-1">POWERED BY CITAME</p>
+            </div>
           </div>
 
-          <nav className="space-y-2 flex-1 animate-stagger-2">
-            <NavItem icon={LayoutDashboard} label="Panel Central" view="dashboard" />
-            <NavItem icon={Calendar} label="Calendario" view="calendar" />
-            <NavItem icon={ClipboardList} label="Agenda Global" view="list" />
-            <NavItem icon={UserPlus} label="Nueva Cita" view="new-appointment" />
-            
-            <div className="pt-8 mt-8 border-t border-slate-700/50 space-y-2">
-              <p className="px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Administración</p>
-              <NavItem icon={Settings} label="Recursos" view="admin" />
-              <NavItem icon={ShieldCheck} label="Seguridad" view="config" />
-            </div>
+          <nav className="space-y-2 flex-1">
+            {[
+              { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+              { id: 'calendar', label: 'Calendario', icon: Calendar },
+              { id: 'list', label: 'Agenda Global', icon: ClipboardList },
+              { id: 'new-appointment', label: 'Agendar Cita', icon: UserPlus },
+              { id: 'admin', label: 'Recursos', icon: Building2 },
+              { id: 'config', label: 'SaaS / Odoo', icon: ShieldCheck },
+            ].map(item => (
+              <button
+                key={item.id}
+                onClick={() => { setActiveView(item.id as any); setIsSidebarOpen(false); }}
+                className={`flex items-center gap-3 w-full px-4 py-3 rounded-2xl transition-all ${
+                  activeView === item.id ? 'bg-white/10 text-white shadow-xl' : 'text-white/40 hover:text-white'
+                }`}
+                style={activeView === item.id ? { borderLeft: `4px solid ${activeCompany.primaryColor}` } : {}}
+              >
+                <item.icon size={20} />
+                <span className="font-medium">{item.label}</span>
+              </button>
+            ))}
           </nav>
 
-          <button 
-            onClick={() => setActiveView('login')}
-            className="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-red-400 transition-colors mt-auto font-medium"
-          >
-            <LogOut size={20} />
-            Cerrar Sesión
+          <button onClick={() => setActiveView('login')} className="flex items-center gap-3 px-4 py-3 text-white/40 hover:text-red-400 transition-colors mt-auto font-medium">
+            <LogOut size={20} /> Cerrar Sesión
           </button>
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto bg-[radial-gradient(circle_at_top_right,_#017E8408,_transparent_40%)]">
+      <main className="flex-1 overflow-auto">
         <header className="sticky top-0 bg-white/60 backdrop-blur-xl border-b border-slate-200 px-8 py-5 flex justify-between items-center z-30">
-          <button onClick={() => setIsSidebarOpen(true)} className="p-2 lg:hidden text-slate-600 transition-transform active:scale-95"><Menu size={24} /></button>
+          <button onClick={() => setIsSidebarOpen(true)} className="p-2 lg:hidden text-slate-600"><Menu size={24} /></button>
           
           <div className="flex items-center gap-6 ml-auto">
-            <div className="relative group cursor-pointer">
-              <div className="p-2.5 bg-slate-100 rounded-xl text-slate-500 group-hover:text-[#714B67] transition-all">
-                <Bell size={20} />
-              </div>
-              <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-[#714B67] rounded-full border-2 border-white" />
+            <div className="text-right hidden sm:block">
+              <p className="text-sm font-bold text-slate-900 leading-none">{activeCompany.name}</p>
+              <p className="text-[10px] text-slate-400 mt-1 font-bold">Identificador: {config.activeCompanyId || 'SaaS-Global'}</p>
             </div>
-            
-            <div className="h-10 w-[1px] bg-slate-200" />
-
-            <div className="flex items-center gap-4 group cursor-pointer">
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-bold text-slate-900 leading-none group-hover:text-[#017E84] transition-colors">Admin Citame</p>
-                <p className="text-[10px] text-slate-400 mt-1.5 font-bold uppercase tracking-tighter">Gestión de Red</p>
-              </div>
-              <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[#017E84] to-[#714B67] p-0.5 shadow-lg group-hover:rotate-6 transition-transform">
-                <div className="w-full h-full bg-white rounded-[14px] flex items-center justify-center text-[#017E84] font-bold">C</div>
-              </div>
+            <div className="w-11 h-11 rounded-2xl bg-slate-200 p-0.5 flex items-center justify-center font-bold text-[#1e3050]">
+              {activeCompany.name.charAt(0)}
             </div>
           </div>
         </header>
 
-        <div className="p-8 max-w-[1400px] mx-auto">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-[70vh]"><div className="animate-spin rounded-full h-16 w-16 border-b-4 border-[#017E84]" /></div>
-          ) : (
-            <div className="animate-in fade-in slide-in-from-bottom-5 duration-700">
-              {activeView === 'dashboard' && <Dashboard appointments={appointments} onNewCita={() => setActiveView('new-appointment')} />}
-              {activeView === 'calendar' && <CalendarView appointments={appointments} onSelectDay={(d) => { setSelectedDate(d); setActiveView('new-appointment'); }} />}
-              {activeView === 'list' && <AppointmentList appointments={appointments} onUpdateStatus={updateAppointmentStatus} />}
-              {activeView === 'new-appointment' && <AppointmentForm onSave={handleCreateAppointment} appointments={appointments} initialDate={selectedDate} sedes={sedes} doctors={doctors} />}
-              {activeView === 'config' && <ConfigPanel config={config} onSave={handleUpdateConfig} />}
-              {activeView === 'admin' && <AdminPanel sedes={sedes} doctors={doctors} onUpdateSedes={(s) => { setSedes(s); persist('sedes', s); }} onUpdateDoctors={(d) => { setDoctors(d); persist('doctors', d); }} />}
-            </div>
-          )}
+        <div className="p-8 max-w-[1400px] mx-auto animate-in fade-in slide-in-from-bottom-5 duration-700">
+          {activeView === 'dashboard' && <Dashboard appointments={appointments} onNewCita={() => setActiveView('new-appointment')} />}
+          {activeView === 'calendar' && <CalendarView appointments={appointments} onSelectDay={(d) => setActiveView('new-appointment')} />}
+          {activeView === 'list' && <AppointmentList appointments={appointments} onUpdateStatus={() => {}} />}
+          {activeView === 'new-appointment' && <AppointmentForm appointments={appointments} sedes={sedes} doctors={doctors} onSave={handleCreateAppointment} />}
+          {activeView === 'config' && <ConfigPanel config={config} onSave={handleUpdateSaaSConfig} />}
+          {activeView === 'admin' && <AdminPanel sedes={sedes} doctors={doctors} onUpdateSedes={(s) => {setSedes(s); persist('sedes', s)}} onUpdateDoctors={(d) => {setDoctors(d); persist('doctors', d)}} />}
         </div>
       </main>
     </div>
