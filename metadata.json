@@ -1,0 +1,5 @@
+{
+  "name": "MedConnect Odoo - Sistema de Gestión Médica",
+  "description": "Plataforma integral para gestión de citas médicas con integración bidireccional a Odoo via XML-RPC, sincronización de pacientes y automatización de pedidos de venta.",
+  "requestFramePermissions": []
+}
