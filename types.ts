@@ -2,9 +2,9 @@
 export interface Patient {
   id?: number;
   nombre: string;
-  email?: string; // Opcional
+  email?: string;
   telefono: string;
-  dni?: string;   // Opcional
+  dni?: string;
   fechaNacimiento?: string;
   direccion?: string;
   odoo_partner_id?: number;
@@ -80,6 +80,7 @@ export interface CompanyProfile {
   odoo: OdooConfig;
   isActive: boolean;
   logo?: string;
+  whatsappHelp?: string;
 }
 
 export interface AppConfig {

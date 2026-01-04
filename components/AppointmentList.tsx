@@ -31,24 +31,36 @@ interface Props {
   sedes: Sede[];
 }
 
+const getStatusBadge = (status: AppointmentStatus) => {
+  switch (status) {
+    case 'pendiente':
+      return 'bg-purple-100 text-purple-700 border-purple-200';
+    case 'confirmada':
+      return 'bg-cyan-100 text-cyan-700 border-cyan-200';
+    case 'completada':
+      return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+    case 'cancelada':
+      return 'bg-rose-100 text-rose-700 border-rose-200';
+    default:
+      return 'bg-slate-100 text-slate-600 border-slate-200';
+  }
+};
+
 const AppointmentList: React.FC<Props> = ({ appointments, onUpdateStatus, doctors, sedes }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
   const [activeTab, setActiveTab] = useState<'evolucion' | 'reprogramar' | 'seguimiento'>('evolucion');
   
-  // Estados para el modal
   const [selectedApp, setSelectedApp] = useState<Appointment | null>(null);
   const [clinicalNotes, setClinicalNotes] = useState('');
   const [treatments, setTreatments] = useState('');
   
-  // Estados para edición/reprogramación
   const [editSede, setEditSede] = useState('');
   const [editDoctor, setEditDoctor] = useState('');
   const [editFecha, setEditFecha] = useState('');
   const [editHora, setEditHora] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
 
-  // Estados para generación de sesiones
   const [numSessions, setNumSessions] = useState(1);
   const [intervalDays, setIntervalDays] = useState(7);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -63,7 +75,6 @@ const AppointmentList: React.FC<Props> = ({ appointments, onUpdateStatus, doctor
     });
   }, [appointments, searchTerm]);
 
-  // Al abrir el modal, cargamos todos los datos actuales de la cita
   const handleOpenClinical = (app: Appointment) => {
     setSelectedApp(app);
     setClinicalNotes(app.historialClinico || '');
@@ -95,7 +106,7 @@ const AppointmentList: React.FC<Props> = ({ appointments, onUpdateStatus, doctor
         .eq('id', selectedApp.id);
       
       if (error) throw error;
-      alert("Cita actualizada y reprogramada con éxito.");
+      alert("Cita actualizada con éxito.");
       setSelectedApp(null);
       window.location.reload(); 
     } catch (e) {
@@ -105,7 +116,6 @@ const AppointmentList: React.FC<Props> = ({ appointments, onUpdateStatus, doctor
     }
   };
 
-  // Lógica para pre-calcular fechas de sesiones
   useEffect(() => {
     if (selectedApp && !isCustomDates) {
       const baseDate = new Date(selectedApp.fecha);
@@ -127,7 +137,8 @@ const AppointmentList: React.FC<Props> = ({ appointments, onUpdateStatus, doctor
     try {
       const sessions = sessionDates.map((date, index) => ({
         id: `SES-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-        patient_email: selectedApp.patient.email.toLowerCase(),
+        patient_name: selectedApp.patient.nombre,
+        patient_phone: selectedApp.patient.telefono,
         doctor_id: selectedApp.doctor.id,
         sede_id: selectedApp.sede,
         tipo: selectedApp.tipo,
@@ -161,11 +172,22 @@ const AppointmentList: React.FC<Props> = ({ appointments, onUpdateStatus, doctor
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
           <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Agenda Médica</h2>
-          <p className="text-slate-500 mt-1 font-medium">Gestión clínica y reprogramación de flujos</p>
+          <p className="text-slate-500 mt-1 font-medium">Gestión clínica y flujos de trabajo</p>
         </div>
-        <div className="flex items-center gap-3 bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
-          <button onClick={() => setViewMode('list')} className={`p-2.5 rounded-xl transition-all ${viewMode === 'list' ? 'bg-[#1e3050] text-white' : 'text-slate-400'}`}><LayoutList size={20} /></button>
-          <button onClick={() => setViewMode('kanban')} className={`p-2.5 rounded-xl transition-all ${viewMode === 'kanban' ? 'bg-[#1e3050] text-white' : 'text-slate-400'}`}><LayoutGrid size={20} /></button>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+            <input 
+              placeholder="Buscar paciente..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-[#017E84]/20 font-medium text-sm w-64 shadow-sm"
+            />
+          </div>
+          <div className="flex items-center gap-1 bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
+            <button onClick={() => setViewMode('list')} className={`p-2.5 rounded-xl transition-all ${viewMode === 'list' ? 'bg-[#1e3050] text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}><LayoutList size={20} /></button>
+            <button onClick={() => setViewMode('kanban')} className={`p-2.5 rounded-xl transition-all ${viewMode === 'kanban' ? 'bg-[#1e3050] text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}><LayoutGrid size={20} /></button>
+          </div>
         </div>
       </div>
 
@@ -176,6 +198,7 @@ const AppointmentList: React.FC<Props> = ({ appointments, onUpdateStatus, doctor
               <tr className="border-b border-slate-100 text-slate-400 text-[10px] font-black uppercase tracking-widest">
                 <th className="px-6 py-5">Paciente</th>
                 <th className="px-6 py-5">Horario</th>
+                <th className="px-6 py-5">Estado</th>
                 <th className="px-6 py-5">Médico / Sede</th>
                 <th className="px-6 py-5 text-right">Acciones</th>
               </tr>
@@ -195,6 +218,11 @@ const AppointmentList: React.FC<Props> = ({ appointments, onUpdateStatus, doctor
                   <td className="px-6 py-5">
                     <p className="text-sm font-bold text-slate-800">{app.fecha}</p>
                     <p className="text-xs text-[#017E84] font-bold mt-1">{app.hora}</p>
+                  </td>
+                  <td className="px-6 py-5">
+                    <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${getStatusBadge(app.estado)}`}>
+                      {app.estado}
+                    </span>
                   </td>
                   <td className="px-6 py-5">
                     <p className="text-sm font-bold text-slate-700">{app.doctor.nombre}</p>
@@ -217,15 +245,27 @@ const AppointmentList: React.FC<Props> = ({ appointments, onUpdateStatus, doctor
            {columns.map(status => (
             <div key={status} className="flex-shrink-0 w-80">
               <h3 className="text-[11px] font-black uppercase text-slate-400 tracking-widest mb-4 px-2 flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-slate-300" /> {status}
+                <div className={`w-2 h-2 rounded-full ${
+                  status === 'pendiente' ? 'bg-purple-400' :
+                  status === 'confirmada' ? 'bg-cyan-400' :
+                  status === 'completada' ? 'bg-emerald-400' : 'bg-rose-400'
+                }`} /> {status}
               </h3>
               <div className="space-y-4">
                 {filtered.filter(a => a.estado === status).map(app => (
-                  <div key={app.id} className="bg-white p-5 rounded-[28px] border border-slate-100 shadow-sm hover:shadow-xl transition-all cursor-default group">
-                    <p className="text-xs font-bold text-slate-800">{app.patient.nombre}</p>
-                    <div className="flex justify-between items-center mt-3 pt-3 border-t border-slate-50">
-                       <p className="text-[10px] font-black text-[#017E84]">{app.hora}</p>
-                       <button onClick={() => handleOpenClinical(app)} className="text-[10px] font-black text-indigo-500 uppercase flex items-center gap-1"><Edit3 size={12} /> Gestionar</button>
+                  <div key={app.id} className={`bg-white p-5 rounded-[28px] border-l-4 border shadow-sm hover:shadow-xl transition-all cursor-default group ${
+                    status === 'pendiente' ? 'border-l-purple-400 border-slate-100' :
+                    status === 'confirmada' ? 'border-l-cyan-400 border-slate-100' :
+                    status === 'completada' ? 'border-l-emerald-400 border-slate-100' : 'border-l-rose-400 border-slate-100'
+                  }`}>
+                    <div className="flex justify-between items-start mb-2">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{app.hora}</p>
+                      <button onClick={() => handleOpenClinical(app)} className="p-1.5 text-slate-200 hover:text-indigo-500 transition-colors"><Edit3 size={14}/></button>
+                    </div>
+                    <p className="text-sm font-bold text-slate-800 leading-tight">{app.patient.nombre}</p>
+                    <div className="flex justify-between items-center mt-4 pt-3 border-t border-slate-50">
+                       <p className="text-[9px] font-black text-[#017E84] uppercase tracking-tighter">{app.doctor.nombre}</p>
+                       <p className="text-[9px] font-black text-slate-300 uppercase">{app.sede}</p>
                     </div>
                   </div>
                 ))}
@@ -235,7 +275,6 @@ const AppointmentList: React.FC<Props> = ({ appointments, onUpdateStatus, doctor
         </div>
       )}
 
-      {/* MODAL CLINICO INTEGRAL */}
       {selectedApp && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#1e3050]/40 backdrop-blur-md animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-5xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
@@ -359,7 +398,7 @@ const AppointmentList: React.FC<Props> = ({ appointments, onUpdateStatus, doctor
                 className={`px-10 py-4 text-white rounded-2xl font-bold flex items-center gap-3 shadow-xl hover:scale-105 transition-all disabled:opacity-50 ${activeTab === 'seguimiento' ? 'bg-indigo-600' : 'bg-[#1e3050]'}`}
                >
                   {(isUpdating || isGenerating) ? <RefreshCcw className="animate-spin" size={18} /> : <Save size={18} />} 
-                  {activeTab === 'seguimiento' ? 'Programar Plan Completo' : 'Guardar y Reprogramar'}
+                  {activeTab === 'seguimiento' ? 'Programar Plan Completo' : 'Guardar Cambios'}
                </button>
             </div>
           </div>

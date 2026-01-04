@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Appointment } from '../types';
+import { Appointment, AppointmentStatus } from '../types';
 import { Users, CalendarCheck, CheckCircle, Clock, Plus, Activity, ArrowUpRight, AlertCircle } from 'lucide-react';
 import { CONSULTA_INFO } from '../constants';
 
@@ -8,6 +8,21 @@ interface DashboardProps {
   appointments: Appointment[];
   onNewCita: () => void;
 }
+
+const getStatusBadge = (status: AppointmentStatus) => {
+  switch (status) {
+    case 'pendiente':
+      return 'bg-purple-100 text-purple-700 border-purple-200';
+    case 'confirmada':
+      return 'bg-cyan-100 text-cyan-700 border-cyan-200';
+    case 'completada':
+      return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+    case 'cancelada':
+      return 'bg-rose-100 text-rose-700 border-rose-200';
+    default:
+      return 'bg-slate-100 text-slate-600 border-slate-200';
+  }
+};
 
 const Dashboard: React.FC<DashboardProps> = ({ appointments, onNewCita }) => {
   const today = new Date().toISOString().split('T')[0];
@@ -35,7 +50,7 @@ const Dashboard: React.FC<DashboardProps> = ({ appointments, onNewCita }) => {
           { label: 'Agenda Hoy', val: todayApps.length, icon: CalendarCheck, col: '#017E84', sub: 'Citas programadas' },
           { label: 'Por Validar', val: pendingValidation, icon: AlertCircle, col: '#f59e0b', sub: 'Reservas web pendientes' },
           { label: 'Atendidos', val: completed, icon: CheckCircle, col: '#1e3050', sub: 'Sesiones finalizadas' },
-          { label: 'Productividad', val: `$${appointments.filter(a => a.estado === 'completada').reduce((s, a) => s + CONSULTA_INFO[a.tipo].price, 0)}`, icon: Activity, col: '#017E84', sub: 'Ingresos estimados' }
+          { label: 'Ingresos Est.', val: `$${appointments.filter(a => a.estado === 'completada').reduce((s, a) => s + CONSULTA_INFO[a.tipo].price, 0)}`, icon: Activity, col: '#017E84', sub: 'Citas atendidas' }
         ].map((item, i) => (
           <div key={i} className="glass p-7 rounded-[32px] border-white/50 hover-card group cursor-default">
             <div className="flex justify-between items-start mb-6">
@@ -55,7 +70,6 @@ const Dashboard: React.FC<DashboardProps> = ({ appointments, onNewCita }) => {
         <div className="lg:col-span-2 glass p-8 rounded-[35px] border-white/50">
           <div className="flex justify-between items-center mb-8">
             <h3 className="text-xl font-bold text-[#1e3050]">Próximos Pacientes</h3>
-            <button className="text-xs font-bold text-[#017E84] uppercase tracking-widest hover:underline">Ver Agenda Completa</button>
           </div>
           <div className="space-y-4">
             {todayApps.slice(0, 5).map(app => (
@@ -69,9 +83,7 @@ const Dashboard: React.FC<DashboardProps> = ({ appointments, onNewCita }) => {
                   <p className="text-xs text-slate-400 font-bold uppercase tracking-tighter">{app.doctor.nombre} • {CONSULTA_INFO[app.tipo].label}</p>
                 </div>
                 <div className="flex items-center gap-3">
-                   <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                     app.estado === 'pendiente' ? 'bg-amber-100 text-amber-600' : 'bg-[#017E84]/10 text-[#017E84]'
-                   }`}>
+                   <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusBadge(app.estado)}`}>
                      {app.estado}
                    </span>
                 </div>
@@ -93,19 +105,10 @@ const Dashboard: React.FC<DashboardProps> = ({ appointments, onNewCita }) => {
             <div className="absolute top-[-20%] right-[-20%] w-[150px] h-[150px] bg-[#017E84]/20 rounded-full blur-[40px] group-hover:scale-150 transition-transform duration-1000" />
             <h4 className="text-2xl font-bold mb-4">Citame Network™</h4>
             <p className="text-slate-400 text-sm font-medium leading-relaxed mb-8">Toda tu red de centros médicos sincronizada. Los cambios en agendas se reflejan instantáneamente.</p>
-            <div className="flex items-center gap-4">
-               <div className="w-12 h-12 bg-[#017E84] rounded-2xl flex items-center justify-center shadow-lg shadow-[#017E8466]">
-                  <Activity size={24} />
-               </div>
-               <div>
-                  <p className="text-xs font-bold text-slate-400">Canal</p>
-                  <p className="text-sm font-bold">Conexión Segura</p>
-               </div>
-            </div>
           </div>
 
           <div className="glass p-8 rounded-[35px] border-white/50">
-             <h4 className="font-bold text-[#1e3050] mb-6">Ocupación por Sede</h4>
+             <h4 className="font-bold text-[#1e3050] mb-6">Ocupación Diaria</h4>
              <div className="space-y-6">
                {['centro', 'norte'].map(s => (
                  <div key={s} className="group cursor-default">

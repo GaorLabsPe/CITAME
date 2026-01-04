@@ -17,7 +17,8 @@ import {
   MessageSquareText,
   Phone,
   User,
-  MessageCircle
+  MessageCircle,
+  HelpCircle
 } from 'lucide-react';
 
 interface Props {
@@ -43,6 +44,12 @@ const PublicBooking: React.FC<Props> = ({ company, sedes, doctors, appointments,
   const themeStyles = {
     primary: company.primaryColor || '#017E84',
     secondary: company.secondaryColor || '#714B67',
+  };
+
+  const handleHelpWhatsApp = () => {
+    if (!company.whatsappHelp) return;
+    const url = `https://wa.me/${company.whatsappHelp}?text=Hola, necesito ayuda con mi reserva en ${company.name}`;
+    window.open(url, '_blank');
   };
 
   const availableDoctorsInSede = useMemo(() => 
@@ -137,6 +144,14 @@ const PublicBooking: React.FC<Props> = ({ company, sedes, doctors, appointments,
             <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-widest">{company.tagline || 'RESERVAS EN LÍNEA'}</p>
           </div>
         </div>
+        {company.whatsappHelp && (
+          <button 
+            onClick={handleHelpWhatsApp}
+            className="flex items-center gap-2 bg-[#25D366] text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all shadow-md"
+          >
+            <MessageCircle size={14} /> Ayuda WhatsApp
+          </button>
+        )}
       </header>
 
       <main className="flex-1 flex flex-col items-center p-6 max-w-xl mx-auto w-full pt-10">
@@ -280,6 +295,20 @@ const PublicBooking: React.FC<Props> = ({ company, sedes, doctors, appointments,
           )}
         </div>
       </main>
+
+      {company.whatsappHelp && (
+        <div className="fixed bottom-8 right-8 z-50 animate-bounce-slow">
+          <button 
+            onClick={handleHelpWhatsApp}
+            className="group relative bg-[#25D366] text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-all"
+          >
+            <HelpCircle size={32} />
+            <span className="absolute right-full mr-4 bg-white text-slate-800 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity shadow-lg border border-slate-100">
+              ¿Necesitas ayuda? Escríbenos
+            </span>
+          </button>
+        </div>
+      )}
 
       <footer className="p-10 text-center opacity-40">
         <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">© 2025 Powered by Citame Ecosystem</p>

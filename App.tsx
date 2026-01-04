@@ -46,7 +46,8 @@ const App: React.FC = () => {
         secondaryColor: c.secondary_color,
         odoo: c.odoo_config,
         isActive: c.is_active,
-        logo: c.logo
+        logo: c.logo,
+        whatsappHelp: c.whatsapp_help
       }));
 
       const activeId = companies.length > 0 ? companies[0].id : '';
@@ -106,8 +107,7 @@ const App: React.FC = () => {
         .eq('id', id);
 
       if (error) throw error;
-      setAppointments(prev => prev.map(a => a.id === id ? { ...a, estado: status } : a));
-
+      
       const app = appointments.find(a => a.id === id);
       const activeCompany = config.companies.find(c => c.id === config.activeCompanyId);
       
@@ -115,19 +115,29 @@ const App: React.FC = () => {
         sendWebhook(activeCompany.odoo.webhookUrl, `cita_${status}` as any, app);
       }
 
+      // INTEGRACIÓN ODOO: Crear Pedido de Venta al confirmar
       if (status === 'confirmada' && app && activeCompany) {
-        const odoo = new OdooService(activeCompany.odoo);
-        const partnerId = await odoo.findOrCreatePartner(app.patient);
-        const products = await odoo.getMedicalProducts();
-        const product = products.find(p => p.default_code === 'CONSULTA') || products[0];
-        if (product) {
-          const orderId = await odoo.createSaleOrder(app, partnerId, product.id);
-          await supabase.from('appointments').update({ 
-            odoo_sale_order_id: orderId, 
-            odoo_partner_id: partnerId 
-          }).eq('id', id);
+        try {
+          const odoo = new OdooService(activeCompany.odoo);
+          const partnerId = await odoo.findOrCreatePartner(app.patient);
+          const products = await odoo.getMedicalProducts();
+          
+          const product = products.find(p => p.default_code?.includes('CONSULTA')) || products[0];
+          
+          if (product) {
+            const orderId = await odoo.createSaleOrder(app, partnerId, product.id);
+            await supabase.from('appointments').update({ 
+              odoo_sale_order_id: orderId, 
+              odoo_partner_id: partnerId 
+            }).eq('id', id);
+            console.log(`Sale Order #${orderId} creada en Odoo para el paciente ${app.patient.nombre}.`);
+          }
+        } catch (odooErr) {
+          console.error("Error sincronizando con Odoo:", odooErr);
         }
       }
+      
+      fetchData();
     } catch (error) {
       console.error('Error al actualizar estado:', error);
     }
@@ -135,11 +145,22 @@ const App: React.FC = () => {
 
   const handleSaveAppointment = async (app: Appointment) => {
     try {
-      // Inserción explícita de campos para evitar errores de esquema
+      let odooPartnerId = app.patient.odoo_partner_id;
+      const activeCompany = config.companies.find(c => c.id === config.activeCompanyId);
+      
+      if (!odooPartnerId && activeCompany && app.patient.dni) {
+        try {
+          const odoo = new OdooService(activeCompany.odoo);
+          odooPartnerId = await odoo.findOrCreatePartner(app.patient);
+        } catch (e) { console.error("Odoo Sync saltado durante la creación"); }
+      }
+
       const insertData = {
         id: app.id,
         patient_name: app.patient.nombre,
         patient_phone: app.patient.telefono,
+        patient_email: app.patient.email || '',
+        patient_dni: app.patient.dni || '',
         doctor_id: app.doctor.id,
         sede_id: app.sede,
         tipo: app.tipo,
@@ -149,32 +170,22 @@ const App: React.FC = () => {
         estado: app.estado,
         motivo: app.motivo,
         company_id: app.company_id,
+        odoo_partner_id: odooPartnerId,
         created_at: app.createdAt,
         updated_at: app.updatedAt
       };
 
-      // Agregar campos opcionales solo si tienen valor para evitar nulos problemáticos en esquemas viejos
-      if (app.patient.email) (insertData as any).patient_email = app.patient.email;
-      if (app.patient.dni) (insertData as any).patient_dni = app.patient.dni;
-
       const { error } = await supabase.from('appointments').insert([insertData]);
-
-      if (error) {
-        console.error("Error de Supabase:", error);
-        alert(`Error al guardar: ${error.message}. Asegúrese de haber ejecutado el SQL para las columnas patient_dni/email.`);
-        return;
-      }
+      if (error) throw error;
 
       setAppointments(prev => [...prev, app]);
       setActiveView('list');
 
-      const activeCompany = config.companies.find(c => c.id === config.activeCompanyId);
       if (activeCompany?.odoo.webhookUrl) {
         sendWebhook(activeCompany.odoo.webhookUrl, 'cita_creada', app);
       }
     } catch (error: any) {
-      console.error('Error inesperado:', error);
-      alert(`Error inesperado: ${error.message || error}`);
+      alert(`Error al guardar: ${error.message}`);
     }
   };
 
@@ -246,7 +257,7 @@ const App: React.FC = () => {
         {loading ? (
           <div className="h-full flex flex-col items-center justify-center space-y-4">
             <div className="w-12 h-12 border-4 border-[#017E84]/20 border-t-[#017E84] rounded-full animate-spin" />
-            <p className="text-slate-400 font-bold animate-pulse">Sincronizando datos...</p>
+            <p className="text-slate-400 font-bold animate-pulse">Conectando con Odoo...</p>
           </div>
         ) : (
           <>
@@ -268,9 +279,17 @@ const App: React.FC = () => {
                 sedes={sedes}
               />
             )}
-            {activeView === 'calendar' && <CalendarView appointments={appointments} onSelectDay={() => setActiveView('new')} />}
+            {activeView === 'calendar' && (
+              <CalendarView 
+                appointments={appointments} 
+                onSelectDay={(date) => {
+                  fetchData();
+                  setActiveView('new');
+                }} 
+              />
+            )}
             {activeView === 'patients' && <PatientList appointments={appointments} activeCompany={activeCompany} />}
-            {activeView === 'admin' && <AdminPanel sedes={sedes} doctors={doctors} onUpdateSedes={fetchData} onUpdateDoctors={fetchData} />}
+            {activeView === 'admin' && <AdminPanel sedes={sedes} doctors={doctors} onUpdateSedes={fetchData} onUpdateDoctors={fetchData} activeCompany={activeCompany} />}
             {activeView === 'config' && <ConfigPanel config={config} onSave={(newCfg) => setConfig(newCfg)} />}
           </>
         )}
