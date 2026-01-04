@@ -37,6 +37,7 @@ const App: React.FC = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
+      // 1. Cargar Compañías
       const { data: companiesData } = await supabase.from('companies').select('*');
       const companies: CompanyProfile[] = (companiesData || []).map(c => ({
         id: c.id,
@@ -50,43 +51,45 @@ const App: React.FC = () => {
         whatsappHelp: c.whatsapp_help
       }));
 
-      const activeId = companies.length > 0 ? companies[0].id : '';
+      const activeId = companies.length > 0 ? (config.activeCompanyId || companies[0].id) : '';
       setConfig({ companies, activeCompanyId: activeId });
 
-      const { data: docsData } = await supabase.from('doctors').select('*');
-      const mappedDocs = docsData || [];
-      setDoctors(mappedDocs);
+      // 2. Cargar Doctores de la compañía activa
+      if (activeId) {
+        const { data: docsData } = await supabase.from('doctors').select('*').eq('company_id', activeId);
+        setDoctors(docsData || []);
 
-      const { data: sedesData } = await supabase.from('sedes').select('*');
-      setSedes(sedesData || []);
+        const { data: sedesData } = await supabase.from('sedes').select('*').eq('company_id', activeId);
+        setSedes(sedesData || []);
 
-      const { data: appsData } = await supabase.from('appointments').select('*').order('fecha', { ascending: true });
-      const mappedApps: Appointment[] = (appsData || []).map(a => ({
-        id: a.id,
-        patient: {
-          nombre: a.patient_name || 'Paciente',
-          email: a.patient_email || '',
-          telefono: a.patient_phone || '',
-          dni: a.patient_dni || '',
-          odoo_partner_id: a.odoo_partner_id
-        },
-        doctor: mappedDocs.find((d: Doctor) => d.id === a.doctor_id) || { id: a.doctor_id, nombre: 'Médico' } as Doctor,
-        sede: a.sede_id || 'Principal',
-        tipo: a.tipo || 'general',
-        fecha: a.fecha,
-        hora: a.hora,
-        duracion: a.duracion || 30,
-        estado: a.estado || 'pendiente',
-        motivo: a.motivo || '',
-        historialClinico: a.historial_clinico,
-        tratamientos: a.tratamientos,
-        odoo_partner_id: a.odoo_partner_id,
-        odoo_sale_order_id: a.odoo_sale_order_id,
-        company_id: a.company_id,
-        createdAt: a.created_at,
-        updatedAt: a.updated_at
-      }));
-      setAppointments(mappedApps);
+        const { data: appsData } = await supabase.from('appointments').select('*').eq('company_id', activeId).order('fecha', { ascending: true });
+        const mappedApps: Appointment[] = (appsData || []).map(a => ({
+          id: a.id,
+          patient: {
+            nombre: a.patient_name || 'Paciente',
+            email: a.patient_email || '',
+            telefono: a.patient_phone || '',
+            dni: a.patient_dni || '',
+            odoo_partner_id: a.odoo_partner_id
+          },
+          doctor: (docsData || []).find((d: any) => d.id === a.doctor_id) || { id: a.doctor_id, nombre: 'Médico no asignado' } as Doctor,
+          sede: (sedesData || []).find((s: any) => s.id === a.sede_id)?.nombre || 'Sede no asignada',
+          tipo: a.tipo || 'general',
+          fecha: a.fecha,
+          hora: a.hora,
+          duracion: a.duracion || 30,
+          estado: a.estado || 'pendiente',
+          motivo: a.motivo || '',
+          historialClinico: a.historial_clinico,
+          tratamientos: a.tratamientos,
+          odoo_partner_id: a.odoo_partner_id,
+          odoo_sale_order_id: a.odoo_sale_order_id,
+          company_id: a.company_id,
+          createdAt: a.created_at,
+          updatedAt: a.updated_at
+        }));
+        setAppointments(mappedApps);
+      }
 
     } catch (error) {
       console.error('Error cargando datos:', error);
@@ -97,7 +100,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [config.activeCompanyId]);
 
   const handleUpdateStatus = async (id: string, status: AppointmentStatus) => {
     try {
@@ -107,36 +110,6 @@ const App: React.FC = () => {
         .eq('id', id);
 
       if (error) throw error;
-      
-      const app = appointments.find(a => a.id === id);
-      const activeCompany = config.companies.find(c => c.id === config.activeCompanyId);
-      
-      if (app && activeCompany?.odoo.webhookUrl) {
-        sendWebhook(activeCompany.odoo.webhookUrl, `cita_${status}` as any, app);
-      }
-
-      // INTEGRACIÓN ODOO: Crear Pedido de Venta al confirmar
-      if (status === 'confirmada' && app && activeCompany) {
-        try {
-          const odoo = new OdooService(activeCompany.odoo);
-          const partnerId = await odoo.findOrCreatePartner(app.patient);
-          const products = await odoo.getMedicalProducts();
-          
-          const product = products.find(p => p.default_code?.includes('CONSULTA')) || products[0];
-          
-          if (product) {
-            const orderId = await odoo.createSaleOrder(app, partnerId, product.id);
-            await supabase.from('appointments').update({ 
-              odoo_sale_order_id: orderId, 
-              odoo_partner_id: partnerId 
-            }).eq('id', id);
-            console.log(`Sale Order #${orderId} creada en Odoo para el paciente ${app.patient.nombre}.`);
-          }
-        } catch (odooErr) {
-          console.error("Error sincronizando con Odoo:", odooErr);
-        }
-      }
-      
       fetchData();
     } catch (error) {
       console.error('Error al actualizar estado:', error);
@@ -145,16 +118,6 @@ const App: React.FC = () => {
 
   const handleSaveAppointment = async (app: Appointment) => {
     try {
-      let odooPartnerId = app.patient.odoo_partner_id;
-      const activeCompany = config.companies.find(c => c.id === config.activeCompanyId);
-      
-      if (!odooPartnerId && activeCompany && app.patient.dni) {
-        try {
-          const odoo = new OdooService(activeCompany.odoo);
-          odooPartnerId = await odoo.findOrCreatePartner(app.patient);
-        } catch (e) { console.error("Odoo Sync saltado durante la creación"); }
-      }
-
       const insertData = {
         id: app.id,
         patient_name: app.patient.nombre,
@@ -170,20 +133,14 @@ const App: React.FC = () => {
         estado: app.estado,
         motivo: app.motivo,
         company_id: app.company_id,
-        odoo_partner_id: odooPartnerId,
         created_at: app.createdAt,
         updated_at: app.updatedAt
       };
 
       const { error } = await supabase.from('appointments').insert([insertData]);
       if (error) throw error;
-
-      setAppointments(prev => [...prev, app]);
+      fetchData();
       setActiveView('list');
-
-      if (activeCompany?.odoo.webhookUrl) {
-        sendWebhook(activeCompany.odoo.webhookUrl, 'cita_creada', app);
-      }
     } catch (error: any) {
       alert(`Error al guardar: ${error.message}`);
     }
@@ -254,10 +211,10 @@ const App: React.FC = () => {
       </aside>
 
       <main className="flex-1 overflow-y-auto p-10 custom-scrollbar">
-        {loading ? (
+        {loading && appointments.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center space-y-4">
             <div className="w-12 h-12 border-4 border-[#017E84]/20 border-t-[#017E84] rounded-full animate-spin" />
-            <p className="text-slate-400 font-bold animate-pulse">Conectando con Odoo...</p>
+            <p className="text-slate-400 font-bold animate-pulse">Cargando ecosistema médico...</p>
           </div>
         ) : (
           <>
@@ -289,8 +246,21 @@ const App: React.FC = () => {
               />
             )}
             {activeView === 'patients' && <PatientList appointments={appointments} activeCompany={activeCompany} />}
-            {activeView === 'admin' && <AdminPanel sedes={sedes} doctors={doctors} onUpdateSedes={fetchData} onUpdateDoctors={fetchData} activeCompany={activeCompany} />}
-            {activeView === 'config' && <ConfigPanel config={config} onSave={(newCfg) => setConfig(newCfg)} />}
+            {activeView === 'admin' && (
+              <AdminPanel 
+                sedes={sedes} 
+                doctors={doctors} 
+                onUpdateSedes={fetchData} 
+                onUpdateDoctors={fetchData} 
+                activeCompany={activeCompany} 
+              />
+            )}
+            {activeView === 'config' && (
+              <ConfigPanel 
+                config={config} 
+                onSave={(newCfg) => setConfig(newCfg)} 
+              />
+            )}
           </>
         )}
       </main>
