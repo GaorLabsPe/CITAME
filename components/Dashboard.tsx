@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Appointment } from '../types';
-import { Users, CalendarCheck, CheckCircle, Clock, Plus, Activity, ArrowUpRight } from 'lucide-react';
+import { Users, CalendarCheck, CheckCircle, Clock, Plus, Activity, ArrowUpRight, AlertCircle } from 'lucide-react';
 import { CONSULTA_INFO } from '../constants';
 
 interface DashboardProps {
@@ -12,6 +12,7 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ appointments, onNewCita }) => {
   const today = new Date().toISOString().split('T')[0];
   const todayApps = appointments.filter(a => a.fecha === today);
+  const pendingValidation = appointments.filter(a => a.estado === 'pendiente').length;
   const completed = todayApps.filter(a => a.estado === 'completada').length;
 
   return (
@@ -32,7 +33,7 @@ const Dashboard: React.FC<DashboardProps> = ({ appointments, onNewCita }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
           { label: 'Agenda Hoy', val: todayApps.length, icon: CalendarCheck, col: '#017E84', sub: 'Citas programadas' },
-          { label: 'Pacientes', val: new Set(appointments.map(a => a.patient.email)).size, icon: Users, col: '#714B67', sub: 'Filiaciones únicas' },
+          { label: 'Por Validar', val: pendingValidation, icon: AlertCircle, col: '#f59e0b', sub: 'Reservas web pendientes' },
           { label: 'Atendidos', val: completed, icon: CheckCircle, col: '#1e3050', sub: 'Sesiones finalizadas' },
           { label: 'Productividad', val: `$${appointments.filter(a => a.estado === 'completada').reduce((s, a) => s + CONSULTA_INFO[a.tipo].price, 0)}`, icon: Activity, col: '#017E84', sub: 'Ingresos estimados' }
         ].map((item, i) => (
@@ -69,7 +70,7 @@ const Dashboard: React.FC<DashboardProps> = ({ appointments, onNewCita }) => {
                 </div>
                 <div className="flex items-center gap-3">
                    <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                     app.estado === 'pendiente' ? 'bg-[#714B67]/10 text-[#714B67]' : 'bg-[#017E84]/10 text-[#017E84]'
+                     app.estado === 'pendiente' ? 'bg-amber-100 text-amber-600' : 'bg-[#017E84]/10 text-[#017E84]'
                    }`}>
                      {app.estado}
                    </span>
@@ -91,7 +92,7 @@ const Dashboard: React.FC<DashboardProps> = ({ appointments, onNewCita }) => {
           <div className="bg-gradient-to-br from-[#1e3050] to-[#2c3e50] p-8 rounded-[35px] text-white shadow-2xl relative overflow-hidden group">
             <div className="absolute top-[-20%] right-[-20%] w-[150px] h-[150px] bg-[#017E84]/20 rounded-full blur-[40px] group-hover:scale-150 transition-transform duration-1000" />
             <h4 className="text-2xl font-bold mb-4">Citame Network™</h4>
-            <p className="text-slate-400 text-sm font-medium leading-relaxed mb-8">Toda tu red de centros médicos sincronizada. Los cambios en agendas se reflejan instantáneamente en toda la organización.</p>
+            <p className="text-slate-400 text-sm font-medium leading-relaxed mb-8">Toda tu red de centros médicos sincronizada. Los cambios en agendas se reflejan instantáneamente.</p>
             <div className="flex items-center gap-4">
                <div className="w-12 h-12 bg-[#017E84] rounded-2xl flex items-center justify-center shadow-lg shadow-[#017E8466]">
                   <Activity size={24} />

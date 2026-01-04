@@ -2,11 +2,23 @@
 export interface Patient {
   id?: number;
   nombre: string;
-  email: string;
+  email?: string; // Opcional
   telefono: string;
-  dni?: string;
+  dni?: string;   // Opcional
   fechaNacimiento?: string;
   direccion?: string;
+  odoo_partner_id?: number;
+}
+
+export type UserRole = 'superadmin' | 'admin_negocio' | 'recepcion_sede';
+
+export interface AppUser {
+  id: string;
+  email: string;
+  nombre: string;
+  role: UserRole;
+  company_id: string;
+  sede_id?: string;
 }
 
 export interface Doctor {
@@ -15,6 +27,7 @@ export interface Doctor {
   especialidad: string;
   sedes: string[];
   activo: boolean;
+  company_id: string;
 }
 
 export type AppointmentStatus = 'pendiente' | 'confirmada' | 'completada' | 'cancelada';
@@ -32,9 +45,11 @@ export interface Appointment {
   duracion: number;
   estado: AppointmentStatus;
   motivo: string;
+  historialClinico?: string;
+  tratamientos?: string;
   odoo_partner_id?: number;
   odoo_sale_order_id?: number;
-  company_id: string; // ID de la compañía que posee la cita
+  company_id: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -44,6 +59,7 @@ export interface Sede {
   nombre: string;
   direccion: string;
   horarios: Record<string, { inicio: string; fin: string }>;
+  company_id: string;
 }
 
 export interface OdooConfig {
@@ -52,10 +68,11 @@ export interface OdooConfig {
   username: string;
   apiKey: string;
   webhookUrl: string;
+  odooCompanyId?: number;
 }
 
 export interface CompanyProfile {
-  id: string; // El slug de la URL, ej: 'feetcare'
+  id: string;
   name: string;
   tagline: string;
   primaryColor: string;
@@ -67,7 +84,7 @@ export interface CompanyProfile {
 
 export interface AppConfig {
   companies: CompanyProfile[];
-  activeCompanyId: string; // Para el panel de admin por defecto
+  activeCompanyId: string;
 }
 
 export interface OdooProduct {

@@ -2,13 +2,15 @@
 /**
  * Odoo XML-RPC Connector
  * Proporciona métodos para interactuar con la API de Odoo utilizando XML-RPC sobre HTTP.
+ * Incluye un puente CORS para evitar bloqueos del navegador.
  */
 
 export class OdooConnector {
   private url: string;
+  // Proxy para evitar errores de CORS (Failed to fetch)
+  private proxyUrl: string = 'https://corsproxy.io/?';
 
   constructor(url: string) {
-    // Asegurar que la URL no termine en slash
     this.url = url.endsWith('/') ? url.slice(0, -1) : url;
   }
 
@@ -21,55 +23,63 @@ export class OdooConnector {
         </params>
       </methodCall>`;
 
-    const endpoint = `${this.url}/xmlrpc/2/${service}`;
+    // Construimos la URL final usando el proxy para saltar el error "Failed to fetch"
+    const targetEndpoint = `${this.url}/xmlrpc/2/${service}`;
+    const endpoint = `${this.proxyUrl}${encodeURIComponent(targetEndpoint)}`;
     
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'text/xml' },
+        headers: { 
+          'Content-Type': 'text/xml',
+          'Accept': 'text/xml'
+        },
         body: xml
       });
 
       if (!response.ok) {
-        throw new Error(`Odoo API Error: ${response.statusText}`);
+        throw new Error(`Odoo API Error: ${response.status}`);
       }
 
       const text = await response.text();
       return this.parseXmlRpcResponse(text);
     } catch (error) {
-      console.error('XML-RPC Call failed:', error);
+      console.error('Odoo Connector Error:', error);
       throw error;
     }
   }
 
   private toXmlRpcValue(val: any): string {
-    let type = 'string';
-    let value = val;
-
+    if (val === null || val === undefined) return `<value><nil/></value>`;
+    
     if (typeof val === 'number') {
-      if (Number.isInteger(val)) type = 'int';
-      else type = 'double';
+      const type = Number.isInteger(val) ? 'int' : 'double';
+      return `<value><${type}>${val}</${type}></value>`;
     } else if (typeof val === 'boolean') {
-      type = 'boolean';
-      value = val ? '1' : '0';
+      return `<value><boolean>${val ? '1' : '0'}</boolean></value>`;
     } else if (Array.isArray(val)) {
       return `<value><array><data>${val.map(v => this.toXmlRpcValue(v)).join('')}</data></array></value>`;
-    } else if (typeof val === 'object' && val !== null) {
+    } else if (typeof val === 'object') {
       const members = Object.entries(val).map(([k, v]) => `<member><name>${k}</name>${this.toXmlRpcValue(v)}</member>`).join('');
       return `<value><struct>${members}</struct></value>`;
     }
 
-    return `<value><${type}>${value}</${type}></value>`;
+    const escaped = String(val)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+    return `<value><string>${escaped}</string></value>`;
   }
 
   private parseXmlRpcResponse(xml: string): any {
     const parser = new DOMParser();
     const doc = parser.parseFromString(xml, 'text/xml');
-    const fault = doc.querySelector('fault');
     
+    const fault = doc.querySelector('fault');
     if (fault) {
-      const faultString = doc.querySelector('member:last-child string')?.textContent;
-      throw new Error(`Odoo Fault: ${faultString}`);
+      const faultStruct = this.parseValueNode(fault.querySelector('value'));
+      throw new Error(`Odoo Fault: ${faultStruct?.faultString || 'Unknown Error'}`);
     }
 
     const valueNode = doc.querySelector('param > value');
@@ -87,24 +97,22 @@ export class OdooConnector {
       case 'int': 
       case 'i4': return parseInt(typeNode.textContent || '0', 10);
       case 'double': return parseFloat(typeNode.textContent || '0');
-      case 'boolean': return typeNode.textContent === '1';
+      case 'boolean': return typeNode.textContent === '1' || typeNode.textContent === 'true';
       case 'array':
         const data = typeNode.querySelector('data');
         return Array.from(data?.children || []).map(v => this.parseValueNode(v as Element));
       case 'struct':
         const obj: any = {};
-        const members = Array.from(typeNode.querySelectorAll(':scope > member'));
-        members.forEach(m => {
+        Array.from(typeNode.querySelectorAll(':scope > member')).forEach(m => {
           const name = m.querySelector('name')?.textContent;
           const val = m.querySelector('value');
           if (name) obj[name] = this.parseValueNode(val);
         });
         return obj;
+      case 'nil': return null;
       default: return typeNode.textContent;
     }
   }
-
-  // --- Odoo Specific API ---
 
   async authenticate(db: string, user: string, key: string): Promise<number> {
     return this.call('common', 'authenticate', [db, user, key, {}]);
@@ -112,17 +120,5 @@ export class OdooConnector {
 
   async rpcCall(service: string, method: string, args: any[]): Promise<any> {
     return this.call(service, method, args);
-  }
-
-  async searchRead(uid: number, key: string, model: string, domain: any[], fields: string[]): Promise<any[]> {
-    return this.call('object', 'execute_kw', [
-      this.getDbFromConfig(), uid, key, model, 'search_read', [domain], { fields }
-    ]);
-  }
-
-  // Helper to get DB if not provided, usually stored in config
-  private getDbFromConfig(): string {
-    // This is just a placeholder, the actual DB should be passed in calls
-    return ""; 
   }
 }
